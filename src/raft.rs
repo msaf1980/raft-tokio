@@ -33,6 +33,7 @@ use Connections;
 pub struct RaftOptions {
     pub heartbeat_timeout: Duration,
     pub election_timeout: Range<Duration>,
+    pub bind_client: bool,
 }
 
 impl Default for RaftOptions {
@@ -40,6 +41,7 @@ impl Default for RaftOptions {
         Self {
             heartbeat_timeout: Duration::from_millis(250),
             election_timeout: Duration::from_millis(500)..Duration::from_millis(750),
+            bind_client: false,
         }
     }
 }
