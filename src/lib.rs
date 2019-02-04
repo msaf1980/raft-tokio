@@ -115,6 +115,7 @@ pub fn start_raft_tcp<RL, RM, L, N, C>(
 
     // Spawn protocol actor
     let elog = logger.clone();
+    info!(elog, "BIND {}", listen.ip());
 
     let (disconnect_tx, disconnect_rx) = unbounded();
 
