@@ -271,21 +271,56 @@ mod tests {
     use raft_consensus::state_machine::null::NullStateMachine;
     use raft_consensus::ServerId;
     use slog;
-    use slog::Drain;
+    use slog::{Drain,Logger};
     use start_raft_tcp;
     use std::net::SocketAddr;
     use std::time::{Duration, Instant};
     use tokio::prelude::future::*;
     use tokio::runtime::current_thread::Runtime;
     use tokio::timer::Delay;
+    use std::time;
+
+    use raft_consensus::state::ConsensusState;
+    use Notifier;
+
+    pub fn raft_consensus_state_fmt(state: &raft_consensus::state::ConsensusState) -> &str {
+        match *state {
+            raft_consensus::state::ConsensusState::Candidate => "candidate",
+            raft_consensus::state::ConsensusState::Follower => "follower",
+            raft_consensus::state::ConsensusState::Leader => "leader",
+        }
+    }
+
+    #[derive(Clone)]
+    struct LeaderNotifier {
+        id: ServerId,
+        logger: Logger,
+    }
+
+    impl LeaderNotifier {
+        fn new(id: ServerId, logger: Logger) -> Self {
+            Self {
+                id,
+                logger,
+            }
+        }
+    }
+
+    impl Notifier for LeaderNotifier {
+        fn state_changed(&mut self, old: ConsensusState, new: ConsensusState) {
+            if old != new {
+                info!(self.logger, "changed node {} state, {} -> {}", self.id, raft_consensus_state_fmt(&old), raft_consensus_state_fmt(&new));
+            }
+        }
+    }
 
     #[test]
     fn temp_test() {
         let mut nodes: HashMap<ServerId, SocketAddr> = HashMap::new();
         nodes.insert(1.into(), "127.0.0.1:9991".parse().unwrap());
-        nodes.insert(2.into(), "127.0.0.1:9992".parse().unwrap());
-        nodes.insert(3.into(), "127.0.0.1:9993".parse().unwrap());
-        //nodes.insert(4.into(), "127.0.0.1:9994".parse().unwrap());
+        nodes.insert(2.into(), "127.0.0.2:9992".parse().unwrap());
+        nodes.insert(3.into(), "127.0.0.3:9993".parse().unwrap());
+        //nodes.insert(4.into(), "127.0.0.4:9994".parse().unwrap());
 
         let mut threads = Vec::new();
         // Set logging
@@ -306,6 +341,7 @@ mod tests {
                 .name(format!("test-{:?}", id).to_string())
                 .spawn(move || {
                     // prepare logger
+                    let notify_log = log.clone();
                     let log = log.clone();
 
                     // prepare consensus
@@ -315,7 +351,7 @@ mod tests {
                     // Create the runtime
                     let mut runtime = Runtime::new().expect("creating runtime");
 
-                    let notifier = ::raft::DoNotNotify;
+                    let notifier = LeaderNotifier::new(id, notify_log);
                     let solver = BiggerIdSolver;
 
                     let raft = lazy(|| {
@@ -340,6 +376,8 @@ mod tests {
                 })
                 .unwrap();
             threads.push(th);
+            // delay for show leader election processes
+            thread::sleep(time::Duration::from_secs(2));
         }
         for t in threads {
             t.join().unwrap();
